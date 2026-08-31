@@ -1,0 +1,3 @@
+pip install -e .
+
+uvicorn app.main:app --reload

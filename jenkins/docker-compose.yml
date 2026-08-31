@@ -1,0 +1,26 @@
+services:
+
+  jenkins:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: image-rag-jenkins
+
+    user: root
+
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+
+    volumes:
+      - jenkins_home:/var/jenkins_home
+
+      # Jenkins가 호스트 Docker를 사용할 수 있게 함
+      - /var/run/docker.sock:/var/run/docker.sock
+
+    restart: unless-stopped
+
+
+volumes:
+  jenkins_home:

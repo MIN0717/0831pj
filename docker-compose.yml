@@ -1,0 +1,46 @@
+services:
+
+  backend:
+    build:
+      context: ./back
+      dockerfile: Dockerfile
+
+    container_name: image-rag-backend
+
+    env_file:
+      - .env
+
+    expose:
+      - "8000"
+
+    restart: unless-stopped
+
+    networks:
+      - image-rag-network
+
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+
+    container_name: image-rag-nginx
+
+    ports:
+      - "80:80"
+
+    volumes:
+      - ./front/dist:/usr/share/nginx/html:ro
+
+    depends_on:
+      - backend
+
+    restart: unless-stopped
+
+    networks:
+      - image-rag-network
+
+
+networks:
+  image-rag-network:
+    driver: bridge
