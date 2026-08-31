@@ -5,6 +5,7 @@ from openai import OpenAI
 
 from app.config import settings
 
+S3_ROOT_PREFIX = "2018-01-011.한국음식이미지_sample"
 
 client = OpenAI(
     api_key=settings.OPENAI_API_KEY
@@ -129,49 +130,40 @@ def find_food_images(
     food_name: str,
     limit: int = 5,
 ) -> list[str]:
-    """
-    선택된 음식 폴더에서 이미지를 찾고,
-    브라우저에서 접근 가능한 URL을 반환한다.
-    """
 
-    food_folder = IMAGE_ROOT / food_name
+    prefix = (
+        f"{S3_ROOT_PREFIX}/"
+        f"{food_name}/"
+    )
 
-    if not food_folder.exists():
-        return []
+    keys = s3_storage.list_files(
+        prefix=prefix
+    )
 
-    allowed_extensions = {
+    allowed_extensions = (
         ".jpg",
         ".jpeg",
         ".png",
         ".webp",
-    }
+    )
 
-    files = sorted([
-        file
-        for file in food_folder.iterdir()
-        if (
-            file.is_file()
-            and file.suffix.lower() in allowed_extensions
+    image_keys = [
+        key
+        for key in keys
+        if key.lower().endswith(
+            allowed_extensions
         )
-    ])[:limit]
+    ]
 
-    image_urls = []
+    image_keys = image_keys[:limit]
 
-    for file in files:
-        # back/images 기준 상대경로 생성
-        relative_path = file.relative_to(
-            settings.IMAGE_DIR
+    return [
+        s3_storage.generate_presigned_url(
+            key=key,
+            expires_in=3600,
         )
-
-        # Windows의 \ 를 URL용 / 로 변경
-        url_path = relative_path.as_posix()
-
-        image_urls.append(
-            f"/images/{url_path}"
-        )
-
-    return image_urls
-
+        for key in image_keys
+    ]
 
 def search_similar_food(
     image_bytes: bytes,

@@ -6,9 +6,7 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-ENV_FILE = BASE_DIR / ".env"
-
-load_dotenv(ENV_FILE)
+load_dotenv(BASE_DIR / ".env")
 
 
 class Settings:
@@ -34,33 +32,44 @@ class Settings:
         "ap-northeast-2",
     )
 
-    AWS_S3_BUCKET_NAME: str = os.getenv(
-        "AWS_S3_BUCKET_NAME",
+    # S3
+    S3_BUCKET_NAME: str = os.getenv(
+        "S3_BUCKET_NAME",
+        "0831pj-image-rag-data-min0717",
+    )
+
+    S3_IMAGE_PREFIX: str = os.getenv(
+        "S3_IMAGE_PREFIX",
+        "2018-01-011.한국음식이미지_sample",
+    )
+
+    # RDS PostgreSQL
+    DB_HOST: str = os.getenv(
+        "DB_HOST",
         "",
     )
 
-    # Local Image
-    IMAGE_DIR: Path = BASE_DIR / "images"
+    DB_PORT: int = int(
+        os.getenv(
+            "DB_PORT",
+            "5432",
+        )
+    )
 
-    @property
-    def FOOD_IMAGE_DIR(self) -> Path:
-        if not self.IMAGE_DIR.exists():
-            raise FileNotFoundError(
-                f"이미지 폴더가 없습니다: {self.IMAGE_DIR}"
-            )
+    DB_NAME: str = os.getenv(
+        "DB_NAME",
+        "postgres",
+    )
 
-        folders = [
-            path
-            for path in self.IMAGE_DIR.iterdir()
-            if path.is_dir()
-        ]
+    DB_USER: str = os.getenv(
+        "DB_USER",
+        "postgres",
+    )
 
-        if not folders:
-            raise FileNotFoundError(
-                "images 폴더 안에 음식 데이터셋이 없습니다."
-            )
-
-        return folders[0]
+    DB_PASSWORD: str = os.getenv(
+        "DB_PASSWORD",
+        "",
+    )
 
 
 settings = Settings()
