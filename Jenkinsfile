@@ -18,6 +18,7 @@ pipeline {
                     )
                 ]) {
                     sh '''
+                        cp "$ENV_FILE" .env
                         cp "$ENV_FILE" back/.env
                     '''
                 }
@@ -68,13 +69,13 @@ pipeline {
             }
         }
 
-        stage('Cleanup') {
-            steps {
-                sh '''
-                    rm -f back/.env
-                    docker image prune -f
-                '''
-            }
+       stage('Cleanup') {
+           steps {
+            sh '''
+                rm -f .env
+                rm -f back/.env
+                docker image prune -f
+            '''
         }
     }
 
