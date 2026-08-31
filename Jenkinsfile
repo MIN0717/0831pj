@@ -1,28 +1,6 @@
 pipeline {
     agent any
 
-
-    environment {
-        OPENAI_API_KEY = credentials(
-            'openai-api-key'
-        )
-
-        AWS_ACCESS_KEY_ID = credentials(
-            'aws-access-key-id'
-        )
-
-        AWS_SECRET_ACCESS_KEY = credentials(
-            'aws-secret-access-key'
-        )
-
-        AWS_S3_BUCKET_NAME = credentials(
-            'aws-s3-bucket-name'
-        )
-
-        AWS_REGION = 'ap-northeast-2'
-    }
-
-
     stages {
 
         stage('Checkout') {
@@ -31,6 +9,20 @@ pipeline {
             }
         }
 
+        stage('Create Environment') {
+            steps {
+                withCredentials([
+                    file(
+                        credentialsId: 'back-env-file',
+                        variable: 'ENV_FILE'
+                    )
+                ]) {
+                    sh '''
+                        cp "$ENV_FILE" back/.env
+                    '''
+                }
+            }
+        }
 
         stage('Frontend Install') {
             steps {
@@ -42,7 +34,6 @@ pipeline {
             }
         }
 
-
         stage('Frontend Build') {
             steps {
                 dir('front') {
@@ -53,22 +44,6 @@ pipeline {
             }
         }
 
-
-        stage('Create Environment') {
-            steps {
-                sh '''
-                    cat > .env <<EOF
-OPENAI_API_KEY=${OPENAI_API_KEY}
-AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-AWS_REGION=${AWS_REGION}
-AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME}
-EOF
-                '''
-            }
-        }
-
-
         stage('Docker Build') {
             steps {
                 sh '''
@@ -76,7 +51,6 @@ EOF
                 '''
             }
         }
-
 
         stage('Deploy') {
             steps {
@@ -86,7 +60,6 @@ EOF
             }
         }
 
-
         stage('Check Containers') {
             steps {
                 sh '''
@@ -95,33 +68,23 @@ EOF
             }
         }
 
-
         stage('Cleanup') {
             steps {
                 sh '''
+                    rm -f back/.env
                     docker image prune -f
                 '''
             }
         }
     }
 
-
     post {
-
         success {
             echo 'Deployment Success'
         }
 
-
         failure {
             echo 'Deployment Failed'
-        }
-
-
-        always {
-            sh '''
-                rm -f .env
-            '''
         }
     }
 }
