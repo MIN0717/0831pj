@@ -1,8 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
-from app.config import settings
 from app.imageRag.web import router as image_rag_router
 
 
@@ -24,15 +22,8 @@ app.add_middleware(
 )
 
 
-app.include_router(image_rag_router)
-
-
-app.mount(
-    "/images",
-    StaticFiles(
-        directory=str(settings.IMAGE_DIR),
-    ),
-    name="images",
+app.include_router(
+    image_rag_router
 )
 
 

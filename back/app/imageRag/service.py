@@ -4,42 +4,76 @@ import json
 from openai import OpenAI
 
 from app.config import settings
+from app.storage.s3 import s3_storage
 
-S3_ROOT_PREFIX = "2018-01-011.한국음식이미지_sample"
 
 client = OpenAI(
     api_key=settings.OPENAI_API_KEY
 )
 
 
-IMAGE_ROOT = settings.FOOD_IMAGE_DIR
-
-
 def get_food_categories() -> list[str]:
     """
-    음식 데이터셋의 폴더 이름을 가져온다.
+    S3에 저장된 음식 폴더 목록을 가져온다.
+
+    예:
+    2018-01-011.한국음식이미지_sample/
+        김밥/
+        김치찌개/
+        갈비탕/
     """
 
-    if not IMAGE_ROOT.exists():
-        raise FileNotFoundError(
-            f"음식 이미지 폴더를 찾을 수 없습니다: {IMAGE_ROOT}"
-        )
-
-    return sorted(
-        folder.name
-        for folder in IMAGE_ROOT.iterdir()
-        if folder.is_dir()
+    root_prefix = (
+        f"{settings.S3_IMAGE_PREFIX.rstrip('/')}/"
     )
 
+    keys = s3_storage.list_files(
+        prefix=root_prefix
+    )
 
-def encode_image(image_bytes: bytes) -> str:
+    categories: set[str] = set()
+
+    for key in keys:
+        if not key.startswith(root_prefix):
+            continue
+
+        relative_key = key[
+            len(root_prefix):
+        ]
+
+        if not relative_key:
+            continue
+
+        parts = relative_key.split("/")
+
+        # 첫 번째 경로가 음식 이름
+        if parts[0]:
+            categories.add(
+                parts[0]
+            )
+
+    result = sorted(categories)
+
+    if not result:
+        raise RuntimeError(
+            "S3에서 음식 카테고리를 찾을 수 없습니다."
+        )
+
+    return result
+
+
+def encode_image(
+    image_bytes: bytes,
+) -> str:
     """
-    이미지 bytes를 base64 문자열로 변환한다.
+    이미지 bytes를 base64로 변환
     """
 
     return base64.b64encode(
         image_bytes
-    ).decode("utf-8")
+    ).decode(
+        "utf-8"
+    )
 
 
 def detect_food(
@@ -47,29 +81,30 @@ def detect_food(
     content_type: str,
 ) -> dict:
     """
-    GPT를 사용해서 이미지 속 음식 종류를 판별한다.
+    OpenAI Vision 모델로
+    업로드된 음식 이미지를 판별한다.
     """
 
     categories = get_food_categories()
 
-    if not categories:
-        raise RuntimeError(
-            "음식 카테고리가 존재하지 않습니다."
-        )
+    category_text = ", ".join(
+        categories
+    )
 
-    base64_image = encode_image(image_bytes)
-
-    category_text = ", ".join(categories)
+    base64_image = encode_image(
+        image_bytes
+    )
 
     prompt = f"""
 업로드된 음식 이미지를 분석해라.
 
-아래 음식 카테고리 중 이미지와 가장 가까운 음식 하나를 선택해라.
+아래 음식 카테고리 중에서
+이미지와 가장 가까운 음식 하나를 선택해라.
 
 음식 카테고리:
 {category_text}
 
-반드시 JSON 형식으로만 응답해라.
+반드시 아래 JSON 형식으로만 응답해라.
 
 {{
     "food_name": "음식 이름",
@@ -77,12 +112,13 @@ def detect_food(
 }}
 
 규칙:
-1. food_name은 반드시 제공된 음식 카테고리 중 하나여야 한다.
+1. food_name은 반드시 위 음식 카테고리 중 하나여야 한다.
 2. description은 한 문장으로 작성한다.
+3. JSON 이외의 설명은 작성하지 않는다.
 """
 
     response = client.responses.create(
-        model="gpt-5.4-mini",
+        model="gpt-5.6-luna",
         input=[
             {
                 "role": "user",
@@ -103,24 +139,43 @@ def detect_food(
         ],
     )
 
-    result_text = response.output_text.strip()
+    result_text = (
+        response.output_text.strip()
+    )
 
-    # 혹시 markdown 코드 블록이 들어왔을 경우 제거
+    # 혹시 ```json 코드블록으로 반환하면 제거
     if result_text.startswith("```"):
         result_text = (
             result_text
-            .replace("```json", "")
-            .replace("```", "")
+            .replace(
+                "```json",
+                "",
+            )
+            .replace(
+                "```",
+                "",
+            )
             .strip()
         )
 
-    result = json.loads(result_text)
+    try:
+        result = json.loads(
+            result_text
+        )
 
-    food_name = result.get("food_name")
+    except json.JSONDecodeError as e:
+        raise RuntimeError(
+            f"GPT JSON 파싱 실패: {result_text}"
+        ) from e
+
+    food_name = result.get(
+        "food_name"
+    )
 
     if food_name not in categories:
         raise ValueError(
-            f"존재하지 않는 음식 카테고리입니다: {food_name}"
+            f"GPT가 존재하지 않는 음식 카테고리를 반환했습니다: "
+            f"{food_name}"
         )
 
     return result
@@ -130,9 +185,12 @@ def find_food_images(
     food_name: str,
     limit: int = 5,
 ) -> list[str]:
+    """
+    S3에서 해당 음식 폴더의 이미지 검색
+    """
 
     prefix = (
-        f"{S3_ROOT_PREFIX}/"
+        f"{settings.S3_IMAGE_PREFIX.rstrip('/')}/"
         f"{food_name}/"
     )
 
@@ -155,7 +213,9 @@ def find_food_images(
         )
     ]
 
-    image_keys = image_keys[:limit]
+    image_keys = sorted(
+        image_keys
+    )[:limit]
 
     return [
         s3_storage.generate_presigned_url(
@@ -165,12 +225,19 @@ def find_food_images(
         for key in image_keys
     ]
 
+
 def search_similar_food(
     image_bytes: bytes,
     content_type: str,
 ) -> dict:
     """
-    전체 Image RAG 서비스 흐름
+    전체 Image RAG Pipeline
+
+    이미지
+    → GPT 음식 판별
+    → S3 이미지 검색
+    → Presigned URL 생성
+    → 결과 반환
     """
 
     food_result = detect_food(
@@ -178,7 +245,9 @@ def search_similar_food(
         content_type=content_type,
     )
 
-    food_name = food_result["food_name"]
+    food_name = food_result[
+        "food_name"
+    ]
 
     images = find_food_images(
         food_name=food_name,
@@ -187,6 +256,8 @@ def search_similar_food(
 
     return {
         "food_name": food_name,
-        "description": food_result["description"],
+        "description": food_result[
+            "description"
+        ],
         "images": images,
     }

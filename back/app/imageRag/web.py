@@ -28,7 +28,9 @@ async def search_image(
             detail="파일 형식을 확인할 수 없습니다.",
         )
 
-    if not file.content_type.startswith("image/"):
+    if not file.content_type.startswith(
+        "image/"
+    ):
         raise HTTPException(
             status_code=400,
             detail="이미지 파일만 업로드할 수 있습니다.",
@@ -48,7 +50,9 @@ async def search_image(
             content_type=file.content_type,
         )
 
-        return ImageSearchResponse(**result)
+        return ImageSearchResponse(
+            **result
+        )
 
     except HTTPException:
         raise

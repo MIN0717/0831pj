@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 from app.config import settings
 
@@ -14,7 +14,7 @@ class S3Storage:
             "region_name": settings.AWS_REGION,
         }
 
-        # 로컬에서 Access Key를 사용하는 경우
+        # 로컬 개발에서 Access Key를 사용하는 경우
         if (
             settings.AWS_ACCESS_KEY_ID
             and settings.AWS_SECRET_ACCESS_KEY
@@ -27,8 +27,8 @@ class S3Storage:
                 settings.AWS_SECRET_ACCESS_KEY
             )
 
-        # EC2에서는 Access Key가 없어도
-        # IAM Role을 자동으로 사용
+        # EC2에서는 Access Key가 없으면
+        # boto3가 IAM Role을 자동 탐색
         self.client = boto3.client(
             **client_options
         )
@@ -36,7 +36,9 @@ class S3Storage:
         self.bucket = settings.S3_BUCKET_NAME
 
 
+    # =========================
     # CREATE
+    # =========================
     def upload_file(
         self,
         file: BinaryIO,
@@ -59,13 +61,43 @@ class S3Storage:
 
             return key
 
-        except ClientError as e:
+        except (ClientError, BotoCoreError) as e:
             raise RuntimeError(
-                f"S3 업로드 실패: {e}"
+                f"S3 파일 업로드 실패: {e}"
             ) from e
 
 
+    def upload_local_file(
+        self,
+        file_path: str | Path,
+        key: str,
+    ) -> str:
+
+        path = Path(file_path)
+
+        if not path.exists():
+            raise FileNotFoundError(
+                f"파일을 찾을 수 없습니다: {path}"
+            )
+
+        try:
+            self.client.upload_file(
+                Filename=str(path),
+                Bucket=self.bucket,
+                Key=key,
+            )
+
+            return key
+
+        except (ClientError, BotoCoreError) as e:
+            raise RuntimeError(
+                f"S3 로컬 파일 업로드 실패: {e}"
+            ) from e
+
+
+    # =========================
     # READ
+    # =========================
     def get_file(
         self,
         key: str,
@@ -80,6 +112,23 @@ class S3Storage:
             return response["Body"].read()
 
         except ClientError as e:
+            error_code = e.response.get(
+                "Error",
+                {},
+            ).get(
+                "Code",
+                "",
+            )
+
+            if error_code in {
+                "NoSuchKey",
+                "404",
+                "NotFound",
+            }:
+                raise FileNotFoundError(
+                    f"S3 파일을 찾을 수 없습니다: {key}"
+                ) from e
+
             raise RuntimeError(
                 f"S3 파일 조회 실패: {e}"
             ) from e
@@ -90,7 +139,7 @@ class S3Storage:
         prefix: str = "",
     ) -> list[str]:
 
-        keys = []
+        keys: list[str] = []
 
         try:
             paginator = self.client.get_paginator(
@@ -113,9 +162,43 @@ class S3Storage:
 
             return keys
 
-        except ClientError as e:
+        except (ClientError, BotoCoreError) as e:
             raise RuntimeError(
-                f"S3 목록 조회 실패: {e}"
+                f"S3 파일 목록 조회 실패: {e}"
+            ) from e
+
+
+    def exists(
+        self,
+        key: str,
+    ) -> bool:
+
+        try:
+            self.client.head_object(
+                Bucket=self.bucket,
+                Key=key,
+            )
+
+            return True
+
+        except ClientError as e:
+            error_code = e.response.get(
+                "Error",
+                {},
+            ).get(
+                "Code",
+                "",
+            )
+
+            if error_code in {
+                "404",
+                "NoSuchKey",
+                "NotFound",
+            }:
+                return False
+
+            raise RuntimeError(
+                f"S3 파일 존재 확인 실패: {e}"
             ) from e
 
 
@@ -135,13 +218,15 @@ class S3Storage:
                 ExpiresIn=expires_in,
             )
 
-        except ClientError as e:
+        except (ClientError, BotoCoreError) as e:
             raise RuntimeError(
-                f"S3 URL 생성 실패: {e}"
+                f"S3 Presigned URL 생성 실패: {e}"
             ) from e
 
 
+    # =========================
     # UPDATE
+    # =========================
     def update_file(
         self,
         file: BinaryIO,
@@ -149,6 +234,7 @@ class S3Storage:
         content_type: str | None = None,
     ) -> str:
 
+        # 같은 key로 업로드하면 덮어쓰기
         return self.upload_file(
             file=file,
             key=key,
@@ -156,7 +242,9 @@ class S3Storage:
         )
 
 
+    # =========================
     # DELETE
+    # =========================
     def delete_file(
         self,
         key: str,
@@ -170,9 +258,9 @@ class S3Storage:
 
             return True
 
-        except ClientError as e:
+        except (ClientError, BotoCoreError) as e:
             raise RuntimeError(
-                f"S3 삭제 실패: {e}"
+                f"S3 파일 삭제 실패: {e}"
             ) from e
 
 
