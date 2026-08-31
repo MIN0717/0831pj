@@ -1,4 +1,4 @@
-git add .import { useState } from "react";
+import { useState } from "react";
 import styled from "styled-components";
 
 import ImageUploader from "../components/ImageUploader";
