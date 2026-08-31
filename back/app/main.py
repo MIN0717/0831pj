@@ -3,6 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.imageRag.web import router as image_rag_router
 
+from app.auth import router as auth_router
+from app.db import Base, engine
+import app.models
+
 
 app = FastAPI(
     title="Image RAG API",
@@ -22,8 +26,19 @@ app.add_middleware(
 )
 
 
+# PostgreSQL 테이블 생성
+Base.metadata.create_all(bind=engine)
+
+
+# 기존 Image RAG API
 app.include_router(
     image_rag_router
+)
+
+
+# 인증 API
+app.include_router(
+    auth_router
 )
 
 

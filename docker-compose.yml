@@ -8,10 +8,72 @@ services:
     container_name: image-rag-backend
 
     env_file:
-      - .env
+      - ./back/.env
+
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/image_rag
+      REDIS_URL: redis://redis:6379/0
 
     expose:
       - "8000"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+      redis:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+    networks:
+      - image-rag-network
+
+
+  postgres:
+    image: postgres:16
+
+    container_name: image-rag-postgres
+
+    environment:
+      POSTGRES_DB: image_rag
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U postgres -d image_rag"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+    restart: unless-stopped
+
+    networks:
+      - image-rag-network
+
+
+  redis:
+    image: redis:7-alpine
+
+    container_name: image-rag-redis
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "redis-cli",
+          "ping"
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
     restart: unless-stopped
 
@@ -41,3 +103,7 @@ services:
 networks:
   image-rag-network:
     driver: bridge
+
+
+volumes:
+  postgres_data:
