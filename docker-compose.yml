@@ -21,16 +21,13 @@ services:
 
   nginx:
     build:
-      context: ./nginx
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: nginx/Dockerfile
 
     container_name: image-rag-nginx
 
     ports:
       - "80:80"
-
-    volumes:
-      - ./front/dist:/usr/share/nginx/html:ro
 
     depends_on:
       - backend
