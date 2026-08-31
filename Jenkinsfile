@@ -69,13 +69,14 @@ pipeline {
             }
         }
 
-       stage('Cleanup') {
-           steps {
-            sh '''
-                rm -f .env
-                rm -f back/.env
-                docker image prune -f
-            '''
+        stage('Cleanup') {
+            steps {
+                sh '''
+                    rm -f .env
+                    rm -f back/.env
+                    docker image prune -f
+                '''
+            }
         }
     }
 
